@@ -1,4 +1,4 @@
-package com.java.lexorank.domain;
+package com.java.lexorank.utils;
 
 import org.springframework.stereotype.Component;
 
@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
  * Production systems should implement full bucket balancing and rebalancing logic.
  */
 @Component
-public class LexoRankGenerator {
+public final class LexoRankGeneratorUtils {
     private static final String BUCKET_0 = "0";
     private static final String BUCKET_1 = "1";
     private static final String BUCKET_2 = "2";
@@ -35,7 +35,7 @@ public class LexoRankGenerator {
      * 
      * Starting with a minimal rank that grows only as needed.
      */
-    public String initial() {
+    public static String initial() {
         return DEFAULT_BUCKET + "|" + MID_VALUE;
     }
     
@@ -46,7 +46,7 @@ public class LexoRankGenerator {
      * @param right The rank of the item to the right (can be null for "after all")
      * @return A new rank lexicographically between left and right
      */
-    public String between(String left, String right) {
+    public static String between(String left, String right) {
         if (left == null && right == null) {
             return initial();
         }
@@ -78,7 +78,7 @@ public class LexoRankGenerator {
     /**
      * Parse a rank string into [bucket, value]
      */
-    private String[] parseRank(String rank) {
+    private static String[] parseRank(String rank) {
         if (rank == null || !rank.contains("|")) {
             // Legacy format without bucket - assume default bucket
             return new String[]{DEFAULT_BUCKET, rank != null ? rank : MID_VALUE};
@@ -90,7 +90,7 @@ public class LexoRankGenerator {
     /**
      * Generate a rank before the given rank
      */
-    private String beforeRank(String rank) {
+    private static String beforeRank(String rank) {
         String[] parts = parseRank(rank);
         String bucket = parts[0];
         String value = parts[1];
@@ -102,7 +102,7 @@ public class LexoRankGenerator {
     /**
      * Generate a rank after the given rank
      */
-    private String afterRank(String rank) {
+    private static String afterRank(String rank) {
         String[] parts = parseRank(rank);
         String bucket = parts[0];
         String value = parts[1];
@@ -114,7 +114,7 @@ public class LexoRankGenerator {
     /**
      * Generate a value lexicographically between two base-36 strings
      */
-    private String betweenValues(String left, String right) {
+    private static String betweenValues(String left, String right) {
         // Validate that left < right lexicographically
         if (left.compareTo(right) >= 0) {
             throw new IllegalArgumentException(
@@ -168,7 +168,7 @@ public class LexoRankGenerator {
     /**
      * Validate if a rank string is in correct format
      */
-    public boolean isValidRank(String rank) {
+    public static boolean isValidRank(String rank) {
         if (rank == null || rank.isEmpty()) {
             return false;
         }

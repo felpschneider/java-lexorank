@@ -1,6 +1,6 @@
 package com.java.lexorank.controller;
 
-import com.java.lexorank.domain.BoardItem;
+import com.java.lexorank.entity.BoardItemEntity;
 import com.java.lexorank.dto.BoardItemResponse;
 import com.java.lexorank.dto.CreateBoardItemRequest;
 import com.java.lexorank.dto.MoveBoardItemRequest;
@@ -27,7 +27,7 @@ public class BoardItemController {
     @ResponseStatus(HttpStatus.CREATED)
     @Operation(summary = "Create a new board item", description = "Creates a board item with an automatically assigned LexoRank")
     public BoardItemResponse create(@Valid @RequestBody CreateBoardItemRequest request) {
-        BoardItem item = service.create(request.getTitle());
+        BoardItemEntity item = service.create(request.getTitle());
         return toResponse(item);
     }
 
@@ -40,11 +40,11 @@ public class BoardItemController {
     @PutMapping("/{id}/move")
     @Operation(summary = "Reorder a board item", description = "Moves an item between two others, updating only the moved item's rank")
     public BoardItemResponse move(@PathVariable UUID id, @Valid @RequestBody MoveBoardItemRequest request) {
-        BoardItem item = service.move(id, request.getLeftId(), request.getRightId());
+        BoardItemEntity item = service.move(id, request.getLeftId(), request.getRightId());
         return toResponse(item);
     }
 
-    private BoardItemResponse toResponse(BoardItem item) {
+    private BoardItemResponse toResponse(BoardItemEntity item) {
         return new BoardItemResponse(item.getId(), item.getTitle(), item.getRank(), item.getCreatedAt());
     }
 }

@@ -1,4 +1,4 @@
-package com.java.lexorank.domain;
+package com.java.lexorank.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,7 +18,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(name = "board_items")
-public class BoardItem {
+public class BoardItemEntity {
     @Id
     @Column(nullable = false, updatable = false)
     private UUID id;

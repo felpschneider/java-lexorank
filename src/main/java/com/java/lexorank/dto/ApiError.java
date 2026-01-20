@@ -1,4 +1,4 @@
-package com.java.lexorank.exception;
+package com.java.lexorank.dto;
 
 import lombok.AllArgsConstructor;
 import lombok.Getter;

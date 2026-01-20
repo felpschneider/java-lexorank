@@ -1,4 +1,4 @@
-package com.java.lexorank.service;
+package com.java.lexorank.exception;
 
 public class NotFoundException extends RuntimeException {
     public NotFoundException(String message) {

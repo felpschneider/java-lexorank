@@ -1,6 +1,6 @@
 package com.java.lexorank.exception;
 
-import com.java.lexorank.service.NotFoundException;
+import com.java.lexorank.dto.ApiError;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;

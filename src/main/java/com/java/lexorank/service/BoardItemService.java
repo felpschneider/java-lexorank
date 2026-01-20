@@ -1,8 +1,10 @@
 package com.java.lexorank.service;
 
-import com.java.lexorank.domain.LexoRankGenerator;
-import com.java.lexorank.domain.BoardItem;
+import com.java.lexorank.utils.LexoRankGeneratorUtils;
+import com.java.lexorank.entity.BoardItemEntity;
+import com.java.lexorank.exception.NotFoundException;
 import com.java.lexorank.repository.BoardItemRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -10,35 +12,30 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
+@AllArgsConstructor
 public class BoardItemService {
     private final BoardItemRepository repository;
-    private final LexoRankGenerator lexoRankGenerator;
 
-    public BoardItemService(BoardItemRepository repository, LexoRankGenerator lexoRankGenerator) {
-        this.repository = repository;
-        this.lexoRankGenerator = lexoRankGenerator;
-    }
-
-    public BoardItem create(String title) {
+    public BoardItemEntity create(String title) {
         String rank = repository.findMaxRank()
-                .map(maxRank -> lexoRankGenerator.between(maxRank, null))
-                .orElseGet(lexoRankGenerator::initial);
+                .map(maxRank -> LexoRankGeneratorUtils.between(maxRank, null))
+                .orElseGet(LexoRankGeneratorUtils::initial);
 
-        BoardItem item = new BoardItem(UUID.randomUUID(), title, rank, Instant.now());
+        BoardItemEntity item = new BoardItemEntity(UUID.randomUUID(), title, rank, Instant.now());
         return repository.save(item);
     }
 
-    public List<BoardItem> listOrdered() {
+    public List<BoardItemEntity> listOrdered() {
         return repository.findAllByOrderByRankAsc();
     }
 
-    public BoardItem move(UUID itemId, UUID leftId, UUID rightId) {
-        BoardItem item = repository.findById(itemId)
+    public BoardItemEntity move(UUID itemId, UUID leftId, UUID rightId) {
+        BoardItemEntity item = repository.findById(itemId)
                 .orElseThrow(() -> new NotFoundException("Item not found: " + itemId));
 
         if (leftId == null && rightId == null) {
             if (repository.count() == 0) {
-                item.setRank(lexoRankGenerator.initial());
+                item.setRank(LexoRankGeneratorUtils.initial());
                 return repository.save(item);
             }
             throw new IllegalArgumentException("Either leftId or rightId must be provided.");
@@ -51,7 +48,7 @@ public class BoardItemService {
         }
 
         // Get all items ordered by rank (excluding the item being moved)
-        List<BoardItem> allItems = repository.findAllByOrderByRankAsc().stream()
+        List<BoardItemEntity> allItems = repository.findAllByOrderByRankAsc().stream()
                 .filter(i -> !i.getId().equals(itemId))
                 .toList();
 
@@ -65,10 +62,10 @@ public class BoardItemService {
             }
         } else if (rightId == null) {
             // Moving after leftId - find the next item after leftId
-            BoardItem leftItem = repository.findById(leftId)
+            BoardItemEntity leftItem = repository.findById(leftId)
                     .orElseThrow(() -> new NotFoundException("Left item not found: " + leftId));
             leftRank = leftItem.getRank();
-            
+
             // Find the next item after leftItem in the ordered list
             for (int i = 0; i < allItems.size(); i++) {
                 if (allItems.get(i).getId().equals(leftId)) {
@@ -89,7 +86,7 @@ public class BoardItemService {
                     .getRank();
         }
 
-        String newRank = lexoRankGenerator.between(leftRank, rightRank);
+        String newRank = LexoRankGeneratorUtils.between(leftRank, rightRank);
         item.setRank(newRank);
         return repository.save(item);
     }
