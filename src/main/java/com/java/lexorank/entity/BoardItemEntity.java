@@ -26,7 +26,7 @@ public class BoardItemEntity {
     @Column(nullable = false)
     private String title;
 
-    @Column(nullable = false, length = 64)
+    @Column(nullable = false, length = 255)
     private String rank;
 
     @Column(nullable = false, updatable = false)

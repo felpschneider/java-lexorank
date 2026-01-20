@@ -44,6 +44,12 @@ public class BoardItemController {
         return toResponse(item);
     }
 
+    @PostMapping("/rebalance")
+    @Operation(summary = "Rebalance ranks", description = "Reassigns shorter ranks to all items. Call when create/move fails with 'Rank Space Exhausted' (ranks grew too long from repeated inserts).")
+    public List<BoardItemResponse> rebalance() {
+        return service.rebalance().stream().map(this::toResponse).toList();
+    }
+
     private BoardItemResponse toResponse(BoardItemEntity item) {
         return new BoardItemResponse(item.getId(), item.getTitle(), item.getRank(), item.getCreatedAt());
     }

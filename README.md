@@ -43,9 +43,9 @@ This implementation follows **Atlassian's LexoRank design**:
   - Second item: `0|q` (1 char)
   - When needed: `0|hi` (2 chars) - extends automatically
 - ⚠️ **Simplified for education** - production systems need:
-  - Automatic bucket rebalancing when ranks grow too long
   - Concurrent access control / locking
   - Marker rows (min/max boundaries)
+- **Rank growth & rebalancing**: Ranks can grow when you repeatedly add items at the end or insert between two adjacent ranks (e.g. `0|h`, `0|h0`, `0|h00`…). When the length exceeds 255, create/move returns **409 Rank Space Exhausted**. Use **POST /api/items/rebalance** to reassign short ranks to all items.
 
 ---
 
@@ -157,7 +157,7 @@ http://localhost:8080/swagger-ui/index.html
 ```
 http://localhost:8080/h2-console
 
-JDBC URL: jdbc:h2:mem:lexorankdb
+JDBC URL: jdbc:h2:mem:lexorank
 Username: sa
 Password: (leave blank)
 ```
@@ -232,6 +232,14 @@ You can move an item to different positions:
 }
 ```
 
+### 3b. Rebalance (when ranks grow too long)
+
+If create or move returns **409 "Rank Space Exhausted"** (rank string &gt; 255 chars), call:
+
+**POST** `/api/items/rebalance`
+
+This reassigns short ranks to all items (e.g. `0|a`, `0|m`, `0|z`) so you can create and move again. Only the rank column is updated; order is preserved.
+
 **Example:** Move **Task C** between **Task A** and **Task B**:
 
 Response:
@@ -271,7 +279,7 @@ Watch how ranks start small and extend only when needed:
 | Insert between A & new | `0\|h` | `0\|j` | `0\|m` | Chars getting closer... |
 | Insert between A & new | `0\|h` | `0\|hi` | `0\|j` | 🎯 Extended to 2 chars! |
 
-**Key insight**: Ranks only grow in length when there's no more space between adjacent characters.
+**Key insight**: Ranks only grow in length when there's no more space between adjacent characters. When they get too long, use **POST /api/items/rebalance**.
 
 ---
 
@@ -290,9 +298,9 @@ Tests include:
 
 This is an **educational reference project**, not production-ready:
 
-- **Simplified LexoRank**: Uses basic string interpolation (real-world systems like Jira use base-36 buckets)
+- **Simplified LexoRank**: No automatic rebalancing; you must call `POST /api/items/rebalance` when ranks exceed 255 chars
 - **No concurrency handling**: Race conditions not addressed
-- **In-memory database**: Data lost on restart
+- **In-memory database**: Data lost on restart (use file-based H2 for persistence)
 - **No authentication/authorization**
 - **Minimal validation and error handling**
 

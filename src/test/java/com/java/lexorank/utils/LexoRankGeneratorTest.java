@@ -73,6 +73,43 @@ class LexoRankGeneratorTest {
     }
 
     @Test
+    void shouldGenerateBetweenSameLengthAdjacentChars() {
+        // Bug case: same length, adjacent last char (e.g. "aa"/"ab").
+        // Must produce rank < right; using BASE/2 as extra char could yield "aai" > "ab".
+        String left = "0|aa";
+        String right = "0|ab";
+        String rank = LexoRankGeneratorUtils.between(left, right);
+        
+        assertTrue(rank.compareTo(left) > 0, "Generated rank should be after left");
+        assertTrue(rank.compareTo(right) < 0, "Generated rank should be before right");
+        assertTrue(LexoRankGeneratorUtils.isValidRank(rank), "Generated rank should be valid");
+    }
+
+    @Test
+    void shouldGenerateAfterMaxValue() {
+        // afterRank("0|z") used to throw: betweenValues("z","z"). Must extend to e.g. "0|zh".
+        String rank = LexoRankGeneratorUtils.between("0|z", null);
+        assertTrue(rank.compareTo("0|z") > 0);
+        assertTrue(LexoRankGeneratorUtils.isValidRank(rank));
+    }
+
+    @Test
+    void shouldThrowBeforeMinValue() {
+        assertThrows(IllegalArgumentException.class,
+            () -> LexoRankGeneratorUtils.between(null, "0|0"),
+            "Should throw when inserting before minimum value 0|0");
+    }
+
+    @Test
+    void shouldGenerateBetweenDifferentBuckets() {
+        // "0|z" < "1|a" as full string; betweenValues("z","a") would throw. Must use afterRank(left).
+        String rank = LexoRankGeneratorUtils.between("0|z", "1|a");
+        assertTrue(rank.compareTo("0|z") > 0);
+        assertTrue(rank.compareTo("1|a") < 0);
+        assertTrue(LexoRankGeneratorUtils.isValidRank(rank));
+    }
+
+    @Test
     void shouldGenerateMultipleBetweenRanks() {
         // Simulate multiple insertions between same two ranks
         String left = "0|a00000";
@@ -144,5 +181,25 @@ class LexoRankGeneratorTest {
         String newRank = LexoRankGeneratorUtils.between(legacyRank, null);
         assertNotNull(newRank);
         assertTrue(LexoRankGeneratorUtils.isValidRank(newRank));
+    }
+
+    @Test
+    void shouldIncrementLastDigitToDelayGrowth() {
+        // Repeated inserts after "y" (right=z): prefer y0→y1→…→yz→yz0 instead of y0→y00→y000…
+        String r1 = LexoRankGeneratorUtils.between("0|y", null);   // after "y"
+        assertEquals("0|y0", r1, "First: append 0");
+        String r2 = LexoRankGeneratorUtils.between("0|y0", null);
+        assertEquals("0|y1", r2, "Increment last: y0→y1");
+        String r3 = LexoRankGeneratorUtils.between("0|y1", null);
+        assertEquals("0|y2", r3);
+        String r4 = LexoRankGeneratorUtils.between("0|y9", null);
+        assertEquals("0|ya", r4, "9→a in base-36");
+        String r5 = LexoRankGeneratorUtils.between("0|yy", null);
+        assertEquals("0|yz", r5, "yy→yz");
+        String r6 = LexoRankGeneratorUtils.between("0|yz", null);
+        assertEquals("0|yz0", r6, "yz→yz0 when last is z (append 0)");
+        // One more: yz0→yz1
+        String r7 = LexoRankGeneratorUtils.between("0|yz0", null);
+        assertEquals("0|yz1", r7);
     }
 }
