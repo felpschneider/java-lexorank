@@ -216,11 +216,11 @@ You can move an item to different positions:
 }
 ```
 
-**b) Move to the beginning (before all items):**
+**b) Move before a specific item:**
 ```json
 {
   "leftId": null,
-  "rightId": "550e8400-e29b-41d4-a716-446655440000"  // First item
+  "rightId": "550e8400-e29b-41d4-a716-446655440000"  // Item to be placed before (e.g. first to go to start, or any other)
 }
 ```
 
