@@ -14,15 +14,21 @@ import java.util.UUID;
 @Service
 @AllArgsConstructor
 public class BoardItemService {
+    private static final String REBALANCE_LEFT = "0|a";
+    private static final String REBALANCE_RIGHT = "0|z";
+
     private final BoardItemRepository repository;
 
     public BoardItemEntity create(String title) {
-        String rank = repository.findMaxRank()
-                .map(maxRank -> LexoRankGeneratorUtils.between(maxRank, null))
-                .orElseGet(LexoRankGeneratorUtils::initial);
-
+        String rank = nextRankForAppend();
         BoardItemEntity item = new BoardItemEntity(UUID.randomUUID(), title, rank, Instant.now());
         return repository.save(item);
+    }
+
+    private String nextRankForAppend() {
+        return repository.findMaxRank()
+                .map(max -> LexoRankGeneratorUtils.between(max, null))
+                .orElseGet(LexoRankGeneratorUtils::initial);
     }
 
     /**
@@ -36,13 +42,15 @@ public class BoardItemService {
             return List.of();
         }
         if (items.size() == 1) {
-            items.get(0).setRank(LexoRankGeneratorUtils.initial());
-            return List.of(repository.save(items.get(0)));
+            return rebalanceSingle(items.get(0));
         }
-        String left = "0|a";
-        String right = "0|z";
-        subdivideAssign(left, right, items, 0, items.size() - 1);
+        subdivideAssign(REBALANCE_LEFT, REBALANCE_RIGHT, items, 0, items.size() - 1);
         return repository.saveAll(items);
+    }
+
+    private List<BoardItemEntity> rebalanceSingle(BoardItemEntity item) {
+        item.setRank(LexoRankGeneratorUtils.initial());
+        return List.of(repository.save(item));
     }
 
     private void subdivideAssign(String left, String right, List<BoardItemEntity> items, int start, int end) {
@@ -65,64 +73,72 @@ public class BoardItemService {
     }
 
     public BoardItemEntity move(UUID itemId, UUID leftId, UUID rightId) {
-        BoardItemEntity item = repository.findById(itemId)
-                .orElseThrow(() -> new NotFoundException("Item not found: " + itemId));
+        BoardItemEntity item = findOrThrow(itemId);
 
         if (leftId == null && rightId == null) {
-            if (repository.count() == 0) {
-                item.setRank(LexoRankGeneratorUtils.initial());
-                return repository.save(item);
-            }
+            return handleMoveWhenBothNull(item);
+        }
+        validateMoveIds(itemId, leftId, rightId);
+
+        List<BoardItemEntity> others = findAllExcluding(itemId);
+        RankBounds bounds = resolveRankBounds(leftId, rightId, others);
+
+        item.setRank(LexoRankGeneratorUtils.between(bounds.left(), bounds.right()));
+        return repository.save(item);
+    }
+
+    private BoardItemEntity findOrThrow(UUID id) {
+        return repository.findById(id)
+                .orElseThrow(() -> new NotFoundException("Item not found: " + id));
+    }
+
+    private BoardItemEntity handleMoveWhenBothNull(BoardItemEntity item) {
+        if (repository.count() > 1) {
             throw new IllegalArgumentException("Either leftId or rightId must be provided.");
         }
+        item.setRank(LexoRankGeneratorUtils.initial());
+        return repository.save(item);
+    }
+
+    private void validateMoveIds(UUID itemId, UUID leftId, UUID rightId) {
         if (leftId != null && leftId.equals(itemId)) {
             throw new IllegalArgumentException("leftId cannot be the same as itemId.");
         }
         if (rightId != null && rightId.equals(itemId)) {
             throw new IllegalArgumentException("rightId cannot be the same as itemId.");
         }
-
-        // Get all items ordered by rank (excluding the item being moved)
-        List<BoardItemEntity> allItems = repository.findAllByOrderByRankAsc().stream()
-                .filter(i -> !i.getId().equals(itemId))
-                .toList();
-
-        String leftRank = null;
-        String rightRank = null;
-
-        if (leftId == null) {
-            // Moving to the beginning - use first item as right boundary
-            if (!allItems.isEmpty()) {
-                rightRank = allItems.get(0).getRank();
-            }
-        } else if (rightId == null) {
-            // Moving after leftId - find the next item after leftId
-            BoardItemEntity leftItem = repository.findById(leftId)
-                    .orElseThrow(() -> new NotFoundException("Left item not found: " + leftId));
-            leftRank = leftItem.getRank();
-
-            // Find the next item after leftItem in the ordered list
-            for (int i = 0; i < allItems.size(); i++) {
-                if (allItems.get(i).getId().equals(leftId)) {
-                    if (i + 1 < allItems.size()) {
-                        rightRank = allItems.get(i + 1).getRank();
-                    }
-                    break;
-                }
-            }
-            // If rightRank is still null, leftId was the last item, so rightRank stays null
-        } else {
-            // Both leftId and rightId provided
-            leftRank = leftId == null ? null : repository.findById(leftId)
-                    .orElseThrow(() -> new NotFoundException("Left item not found: " + leftId))
-                    .getRank();
-            rightRank = repository.findById(rightId)
-                    .orElseThrow(() -> new NotFoundException("Right item not found: " + rightId))
-                    .getRank();
-        }
-
-        String newRank = LexoRankGeneratorUtils.between(leftRank, rightRank);
-        item.setRank(newRank);
-        return repository.save(item);
     }
+
+    private List<BoardItemEntity> findAllExcluding(UUID excludeId) {
+        return repository.findAllByOrderByRankAsc().stream()
+                .filter(i -> !i.getId().equals(excludeId))
+                .toList();
+    }
+
+    private RankBounds resolveRankBounds(UUID leftId, UUID rightId, List<BoardItemEntity> others) {
+        if (leftId == null) {
+            return new RankBounds(null, rankOf(rightId));
+        }
+        if (rightId == null) {
+            String left = rankOf(leftId);
+            String right = rankOfNextAfter(others, leftId);
+            return new RankBounds(left, right);
+        }
+        return new RankBounds(rankOf(leftId), rankOf(rightId));
+    }
+
+    private String rankOf(UUID id) {
+        return findOrThrow(id).getRank();
+    }
+
+    private String rankOfNextAfter(List<BoardItemEntity> ordered, UUID afterId) {
+        for (int i = 0; i < ordered.size(); i++) {
+            if (ordered.get(i).getId().equals(afterId)) {
+                return (i + 1 < ordered.size()) ? ordered.get(i + 1).getRank() : null;
+            }
+        }
+        return null;
+    }
+
+    private record RankBounds(String left, String right) {}
 }
