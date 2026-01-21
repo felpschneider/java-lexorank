@@ -1,5 +1,6 @@
 package com.java.lexorank.utils;
 
+import com.java.lexorank.exception.LexoRankLengthException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -11,10 +12,14 @@ import org.springframework.stereotype.Component;
  * - value: base-36 alphanumeric string (0-9, a-z)
  * 
  * Note: This is a simplified version for educational purposes.
- * Production systems should implement full bucket balancing and rebalancing logic.
+ * Ranks can grow when repeatedly inserting at the same spot; when
+ * {@link #MAX_RANK_LENGTH} is exceeded, rebalancing is required.
  */
 @Component
 public final class LexoRankGeneratorUtils {
+
+    /** Maximum rank length (must match DB column). When exceeded, throw and run rebalance. */
+    public static final int MAX_RANK_LENGTH = 255;
     private static final String BUCKET_0 = "0";
     private static final String BUCKET_1 = "1";
     private static final String BUCKET_2 = "2";
@@ -36,7 +41,9 @@ public final class LexoRankGeneratorUtils {
      * Starting with a minimal rank that grows only as needed.
      */
     public static String initial() {
-        return DEFAULT_BUCKET + "|" + MID_VALUE;
+        String rank = DEFAULT_BUCKET + "|" + MID_VALUE;
+        checkMaxLength(rank);
+        return rank;
     }
     
     /**
@@ -51,10 +58,10 @@ public final class LexoRankGeneratorUtils {
             return initial();
         }
         if (left == null) {
-            return beforeRank(right);
+            return checkMaxLength(beforeRank(right));
         }
         if (right == null) {
-            return afterRank(left);
+            return checkMaxLength(afterRank(left));
         }
         
         // Extract bucket and value from both ranks
@@ -66,13 +73,25 @@ public final class LexoRankGeneratorUtils {
         String rightBucket = rightParts[0];
         String rightValue = rightParts[1];
         
-        // Use the left bucket (or default if both are the same)
-        String resultBucket = leftBucket.equals(rightBucket) ? leftBucket : DEFAULT_BUCKET;
+        // When buckets differ: full order is driven by bucket (e.g. "0|z" < "1|a").
+        // betweenValues(leftValue, rightValue) would throw because "z" > "a".
+        // Use afterRank(left): it is > left and still < right (since leftBucket < rightBucket).
+        if (!leftBucket.equals(rightBucket)) {
+            return checkMaxLength(afterRank(left));
+        }
         
-        // Generate value between left and right values
+        // Same bucket: generate value between left and right
         String resultValue = betweenValues(leftValue, rightValue);
-        
-        return resultBucket + "|" + resultValue;
+        return checkMaxLength(leftBucket + "|" + resultValue);
+    }
+
+    private static String checkMaxLength(String rank) {
+        if (rank != null && rank.length() > MAX_RANK_LENGTH) {
+            throw new LexoRankLengthException(
+                "Generated rank length " + rank.length() + " exceeds max " + MAX_RANK_LENGTH
+                + ". Call POST /api/items/rebalance to reassign shorter ranks.");
+        }
+        return rank;
     }
     
     /**
@@ -95,6 +114,11 @@ public final class LexoRankGeneratorUtils {
         String bucket = parts[0];
         String value = parts[1];
         
+        if (MIN_VALUE.equals(value)) {
+            // No base-36 char before "0": cannot generate a valid rank in same bucket.
+            throw new IllegalArgumentException(
+                "Cannot generate rank before minimum value \"" + MIN_VALUE + "\" (rank=" + rank + ")");
+        }
         String newValue = betweenValues(MIN_VALUE, value);
         return bucket + "|" + newValue;
     }
@@ -107,10 +131,29 @@ public final class LexoRankGeneratorUtils {
         String bucket = parts[0];
         String value = parts[1];
         
+        if (MAX_VALUE.equals(value)) {
+            // No base-36 char after "z": append mid to get "z" < "z" + mid (e.g. "zh")
+            return bucket + "|" + value + MID_VALUE;
+        }
         String newValue = betweenValues(value, MAX_VALUE);
         return bucket + "|" + newValue;
     }
     
+    /**
+     * When there is no char between leftChar and rightChar, try to increment the last
+     * digit of left (y0→y1→…→yz) to delay growth. Returns null if we should append "0" instead
+     * (e.g. last is 'z', or increment would be >= right).
+     */
+    private static String tryIncrementLast(String left, String right) {
+        if (left == null || left.isEmpty()) return null;
+        char last = left.charAt(left.length() - 1);
+        if (last == 'z') return null;
+        int idx = BASE_36_CHARS.indexOf(last);
+        if (idx < 0) return null;
+        String result = left.substring(0, left.length() - 1) + BASE_36_CHARS.charAt(idx + 1);
+        return result.compareTo(right) < 0 ? result : null;
+    }
+
     /**
      * Generate a value lexicographically between two base-36 strings
      */
@@ -148,10 +191,13 @@ public final class LexoRankGeneratorUtils {
                 result.append(BASE_36_CHARS.charAt(midIndex));
                 return result.toString();
             } else if (diff == 1) {
-                // Adjacent characters - append left and add middle char
-                result.append(leftChar);
-                result.append(BASE_36_CHARS.charAt(BASE / 2));
-                return result.toString();
+                // Adjacent chars: no single base-36 char between leftChar and rightChar.
+                // Prefer incrementing the last digit (y0→y1→…→yz) to delay growth; only append "0" when last is 'z'.
+                String withIncr = tryIncrementLast(left, right);
+                if (withIncr != null) {
+                    return withIncr;
+                }
+                return left + BASE_36_CHARS.charAt(0);
             } else {
                 // leftIndex > rightIndex at this position
                 // This means we need to look at previous position

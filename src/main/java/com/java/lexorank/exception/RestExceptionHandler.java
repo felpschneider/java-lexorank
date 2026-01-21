@@ -37,6 +37,18 @@ public class RestExceptionHandler {
         );
     }
 
+    @ExceptionHandler(LexoRankLengthException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError handleLexoRankLength(LexoRankLengthException ex, WebRequest request) {
+        return new ApiError(
+                Instant.now(),
+                HttpStatus.CONFLICT.value(),
+                "Rank Space Exhausted",
+                ex.getMessage(),
+                request.getDescription(false).replace("uri=", "")
+        );
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiError handleValidation(MethodArgumentNotValidException ex, WebRequest request) {

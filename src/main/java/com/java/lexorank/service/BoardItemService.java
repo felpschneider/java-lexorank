@@ -25,6 +25,41 @@ public class BoardItemService {
         return repository.save(item);
     }
 
+    /**
+     * Rebalance all items: reassign ranks evenly between "0|a" and "0|z" so that
+     * ranks stay short and there is space for future inserts. Call this when
+     * creation or move fails with "Rank Space Exhausted" (rank too long).
+     */
+    public List<BoardItemEntity> rebalance() {
+        List<BoardItemEntity> items = repository.findAllByOrderByRankAsc();
+        if (items.isEmpty()) {
+            return List.of();
+        }
+        if (items.size() == 1) {
+            items.get(0).setRank(LexoRankGeneratorUtils.initial());
+            return List.of(repository.save(items.get(0)));
+        }
+        String left = "0|a";
+        String right = "0|z";
+        subdivideAssign(left, right, items, 0, items.size() - 1);
+        return repository.saveAll(items);
+    }
+
+    private void subdivideAssign(String left, String right, List<BoardItemEntity> items, int start, int end) {
+        if (start > end) {
+            return;
+        }
+        if (start == end) {
+            items.get(start).setRank(LexoRankGeneratorUtils.between(left, right));
+            return;
+        }
+        int mid = (start + end) / 2;
+        String midRank = LexoRankGeneratorUtils.between(left, right);
+        items.get(mid).setRank(midRank);
+        subdivideAssign(left, midRank, items, start, mid - 1);
+        subdivideAssign(midRank, right, items, mid + 1, end);
+    }
+
     public List<BoardItemEntity> listOrdered() {
         return repository.findAllByOrderByRankAsc();
     }
